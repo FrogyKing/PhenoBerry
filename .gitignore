@@ -16,6 +16,8 @@ data/
 .vscode/
 .idea/
 
+sandbox/
+
 # Ignorar archivo de estructura
 structure.txt
 

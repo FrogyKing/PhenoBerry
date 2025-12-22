@@ -15,8 +15,10 @@ data/
 .aws/
 .vscode/
 .idea/
+.aws-sam/
 
 sandbox/
+infrastructure\samconfig.toml
 
 # Ignorar archivo de estructura
 structure.txt

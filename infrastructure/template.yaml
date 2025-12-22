@@ -197,8 +197,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
-      MemorySize: 512
-      Timeout: 60
+      MemorySize: 2048
+      Timeout: 300
       Environment:
         Variables:
           LIGHTNING_USER_ID: !Ref LightningUserId
@@ -221,7 +221,7 @@ Resources:
                     Value: .zip # Dispara solo al subir un ZIP completo
     Metadata:
       Dockerfile: docker/bridge_image/Dockerfile
-      DockerContext: .
+      DockerContext: ..
       DockerTag: bridge-v1
 
 

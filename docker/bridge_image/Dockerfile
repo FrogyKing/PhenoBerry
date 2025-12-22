@@ -4,7 +4,7 @@ FROM public.ecr.aws/lambda/python:3.11
 RUN yum install -y git
 
 # Instalar SDK de Lightning
-RUN pip install lightning-sdk requests boto3
+RUN pip install "numpy<2.0" lightning-sdk requests boto3
 
 COPY src/aws_lambda/lightning_bridge ${LAMBDA_TASK_ROOT}/src/aws_lambda/lightning_bridge
 

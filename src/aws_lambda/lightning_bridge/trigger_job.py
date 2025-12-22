@@ -1,64 +1,60 @@
 import os
-import boto3
 import json
-from lightning_sdk import Machine, Studio, LightningClient
-
-# Estas variables vendrán del entorno (Secrets)
-LIGHTNING_USER_ID = os.environ['LIGHTNING_USER_ID']
-LIGHTNING_API_KEY = os.environ['LIGHTNING_API_KEY']
-LIGHTNING_PROJECT = os.environ['LIGHTNING_PROJECT'] # Nombre de tu proyecto en Lightning
+# NUEVA IMPORTACIÓN (La correcta para la versión actual)
+from lightning_sdk import Studio, Machine, Job
 
 def lambda_handler(event, context):
     print("🚀 Iniciando solicitud de Reentrenamiento a Lightning AI...")
 
     try:
-        # 1. Autenticación (El cliente usa variables de entorno o config file)
-        # Configuración manual del cliente si es necesario, o seteo de env vars
-        os.environ['LIGHTNING_API_KEY'] = LIGHTNING_API_KEY
+        # 1. Configuración (Variables de Entorno)
+        user_id = os.environ['LIGHTNING_USER_ID']
+        api_key = os.environ['LIGHTNING_API_KEY']
         
-        client = LightningClient()
-        project = client.projects_service_list_memberships()[0].project_id # Obtiene el ID del proyecto por defecto
+        # OJO: Ajusta esto si tu Studio tiene otro nombre o teamspace
+        # Si creaste el Studio manualmente, pon su nombre aquí.
+        STUDIO_NAME = "lightning_GPU"  
+        TEAMSPACE = "Vision-model" # Por defecto suele ser tu usuario, o el nombre de tu equipo
+        USER_ID = "luisgonzalezalvarez991"
+        #USER = "Luis Gonzalez Alvarez"
+        # 2. Referenciar el Studio (El "Controlador")
+        # Esto no crea uno nuevo, se conecta al que ya tienes para lanzar el Job desde ahí
+        studio = Studio(name=STUDIO_NAME, teamspace=TEAMSPACE, user=USER_ID)
+        studio.start()
         
-        # 2. Definir el Job
-        # Esto le dice a Lightning: "Arranca una máquina T4, clona mi repo y corre este comando"
-        
-        # NOTA: Para MLOps real, tu código de entrenamiento debe estar en el repo.
-        # Aquí asumimos que Lightning clona tu repo de GitHub antes de correr.
-        
-        cmd = "git clone https://github.com/[TU_USUARIO]/PhenoBerry.git && " \
-              "pip install -r PhenoBerry/requirements.txt && " \
-              "pip install ultralytics boto3 && " \
+        # 3. Definir el Comando
+        # Usamos --no-cache-dir para evitar problemas de espacio
+        # Y 'python -m' para asegurar ejecución correcta
+        cmd = "git clone https://github.com/FrogyKing/PhenoBerry.git && " \
+              "pip install --no-cache-dir -r PhenoBerry/requirements.txt && " \
+              "pip install --no-cache-dir ultralytics PyYAML boto3 && " \
               "python PhenoBerry/src/lightning_workspace/yolo_model/train.py"
 
-        print(f"Comando a ejecutar: {cmd}")
+        print(f"Comando: {cmd}")
 
-        # 3. Lanzar el Job (Usando la API de Jobs)
-        # Nota: La SDK de Python de Lightning a veces cambia, esta es la forma genérica de 'run job'
-        # Si usas 'Studio', puedes hacer studio.run(cmd)
-        
-        # Simplificación: Usamos un Studio existente o creamos un Job
-        # Para tu tesis, lo más robusto es lanzar un Job en una máquina nueva
-        
-        job = client.job_service_create_job(
-            project_id=project,
-            name=f"retrain-yolo-{context.aws_request_id[:8]}",
-            machine_name="gpu-t4", # O la máquina que tengas créditos (ej: A10G)
+        # 4. Lanzar el Job (Fire & Forget)
+        # Usamos Machine.T4 (Barata y buena) o Machine.A10G (Más rápida)
+        job = Job.run(
             command=cmd,
-            env=[
-                # Pasamos las credenciales de AWS al Job para que pueda leer/escribir en S3
-                {"name": "AWS_ACCESS_KEY_ID", "value": os.environ['AWS_ACCESS_KEY_ID']},
-                {"name": "AWS_SECRET_ACCESS_KEY", "value": os.environ['AWS_SECRET_ACCESS_KEY']},
-                {"name": "AWS_REGION", "value": os.environ['AWS_REGION']}
-            ]
+            machine=Machine.T4,
+            studio=studio,
+            name=f"retrain-yolo-{context.aws_request_id[:8]}",
+            env={
+                "AWS_ACCESS_KEY_ID": os.environ['MY_AWS_KEY'],
+                "AWS_SECRET_ACCESS_KEY": os.environ['MY_AWS_SECRET'],
+                "AWS_REGION": "us-east-1"
+            }
         )
-
-        print(f"✅ Job enviado a Lightning AI. ID: {job.id}")
+        studio.stop()
+        print(f"✅ Job enviado exitosamente: {job.name}")
         
         return {
             'statusCode': 200,
-            'body': json.dumps(f"Entrenamiento iniciado: {job.name}")
+            'body': json.dumps(f"Job iniciado: {job.name}")
         }
 
     except Exception as e:
         print(f"❌ Error lanzando job: {str(e)}")
+        # Importante: No lanzamos 'raise' si queremos evitar reintentos infinitos de Lambda
+        # Pero para debug, déjalo.
         raise e

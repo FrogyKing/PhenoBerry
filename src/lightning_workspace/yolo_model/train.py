@@ -1,4 +1,5 @@
 import os
+import sys
 import boto3
 import shutil
 import yaml
@@ -7,6 +8,13 @@ import random
 from datetime import datetime
 from ultralytics import YOLO
 # Importamos tu lógica compartida de tiling
+
+# Agrega la raíz del proyecto (3 niveles arriba de este script) al path de Python
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+
 from src.common.tiling import process_tiling
 
 # --- CONFIGURACIÓN DE INFRAESTRUCTURA ---

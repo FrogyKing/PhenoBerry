@@ -1,0 +1,14 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "phenoberry-stack"
+resolve_s3 = true
+s3_prefix = "phenoberry-stack"
+profile = "sam-dev"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "EnvName=\"dev\""
+image_repositories = ["TilingProcessingFunction=038876987034.dkr.ecr.us-east-1.amazonaws.com/phenoberry-dev-ecr-core"]
+
+[default.global.parameters]
+region = "us-east-1"

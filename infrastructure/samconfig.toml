@@ -1,0 +1,15 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "phenoberry-stack"
+resolve_s3 = true
+s3_prefix = "phenoberry-stack"
+region = "us-east-1"
+profile = "sam-dev"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "EnvName=\"dev\""
+image_repositories = []
+
+[default.global.parameters]
+region = "us-east-1"

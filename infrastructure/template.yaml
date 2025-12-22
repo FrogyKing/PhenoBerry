@@ -1,0 +1,234 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  PhenoBerry - Infraestructura Base
+  Data Lake S3, DynamoDB y Trigger de Ingesta.
+
+# Parámetros globales para nombrar recursos
+Parameters:
+  EnvName:
+    Type: String
+    Default: dev
+    Description: Nombre del ambiente (qas, dev, prod)
+  # --- AGREGA ESTO ---
+  LightningUserId:
+    Type: String
+    NoEcho: true # Esto oculta la clave en los logs de CloudFormation
+    Description: "ID de usuario de Lightning AI"
+  LightningApiKey:
+    Type: String
+    NoEcho: true
+    Description: "API Key de Lightning AI"
+  MyAwsKey:
+    Type: String
+    NoEcho: true
+    Description: "Access Key para que Lightning entre a S3"
+  MyAwsSecret:
+    Type: String
+    NoEcho: true
+    Description: "Secret Key para que Lightning entre a S3"
+
+Resources:
+  # ==========================================
+  # 1. DATA LAKE (S3 BUCKETS)
+  # ==========================================
+  
+  # Zona 1: Datos Crudos (Videos/Fotos subidos por ti)
+  S3RawZone:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "phenoberry-${EnvName}-raw-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled # Vital para MLOps (versionado de datos)
+
+  # Zona 2: Datos Procesados (Tiles/Recortes listos para modelos)
+  S3ProcessedZone:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "phenoberry-${EnvName}-processed-${AWS::AccountId}"
+
+  # Zona 3: Artefactos de Modelos (Pesos .pt, .onnx, .pkl)
+  S3ModelArtifacts:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "phenoberry-${EnvName}-artifacts-${AWS::AccountId}"
+
+  # Zona 4: Salida Final (Imágenes reconstruidas y etiquetadas)
+  S3FinalOutput:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "phenoberry-${EnvName}-output-${AWS::AccountId}"
+
+  # ==========================================
+  # 2. METADATA STORE (DYNAMODB)
+  # ==========================================
+  DynamoDBTrackingTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "phenoberry-${EnvName}-tracking"
+      BillingMode: PAY_PER_REQUEST # Capa gratuita friendly (On-Demand)
+      AttributeDefinitions:
+        - AttributeName: media_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: media_id
+          KeyType: HASH
+
+  # ==========================================
+  # 3. FUNCIONES LAMBDA (INGESTA)
+  # ==========================================
+  IngestTriggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../src/aws_lambda/ingest_trigger/
+      Handler: app.lambda_handler
+      Runtime: python3.11
+      MemorySize: 128
+      Timeout: 30
+      Environment:
+        Variables:
+          DYNAMO_TABLE: !Ref DynamoDBTrackingTable
+      # Permisos automáticos (Policies simplificadas de SAM)
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamoDBTrackingTable
+      # El Trigger: Se activa al subir archivo a S3RawZone
+      #Events:
+      #  FileUpload:
+      #    Type: S3
+      #    Properties:
+      #      Bucket: !Ref S3RawZone
+      #      Events: s3:ObjectCreated:*
+      #      Filter:
+      #        S3Key:
+      #          Rules:
+      #            - Name: suffix
+      #              Value: .jpg # Puedes agregar otro evento para .mp4 si es necesario
+  # ==========================================
+  # 4. FUNCIONES LAMBDA (PROCESAMIENTO)
+  # ==========================================
+  TilingProcessingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image # ¡Importante! Decimos que es Docker
+      MemorySize: 2048   # OpenCV consume RAM, 2GB es seguro y rápido
+      Timeout: 300       # 5 minutos (el tiling puede demorar si la foto es enorme)
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          PROCESSED_BUCKET: !Ref S3ProcessedZone
+          DYNAMO_TABLE: !Ref DynamoDBTrackingTable
+      Events:
+        # Evento para archivos JPG (minúscula)
+        UploadJPG:
+          Type: S3
+          Properties:
+            Bucket: !Ref S3RawZone
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .jpg
+        
+        # Evento para archivos PNG (minúscula)
+        UploadPNG:
+          Type: S3
+          Properties:
+            Bucket: !Ref S3RawZone
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .png
+
+        # Opcional: Evento para JPG en mayúsculas (muy común en cámaras)
+        UploadJPGUpper:
+          Type: S3
+          Properties:
+            Bucket: !Ref S3RawZone
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .JPG
+
+        # Opcional: Evento para PNG en mayúsculas (muy común en cámaras)
+        UploadPNGUpper:
+          Type: S3
+          Properties:
+            Bucket: !Ref S3RawZone
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .PNG
+      Policies:
+        # Permiso para LEER del bucket Raw
+        - S3ReadPolicy:
+            BucketName: !Sub "phenoberry-${EnvName}-raw-${AWS::AccountId}"
+        # Permiso para ESCRIBIR en el bucket Processed
+        - S3CrudPolicy:
+            BucketName: !Ref S3ProcessedZone
+        # Permiso para actualizar DynamoDB
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamoDBTrackingTable
+    Metadata:
+      DockerTag: python3.11-v1
+      DockerContext: ..  # Subimos un nivel para ver 'src'
+      Dockerfile: docker/processing_image/Dockerfile # Ruta desde la raíz
+
+  # ==========================================
+  # 5. ORQUESTACIÓN (TRIGGER)
+  # ==========================================
+  # OPCIÓN A: Trigger directo S3 -> Tiling (Más simple para empezar)
+  # Esto hace que apenas subas la foto RAW, se ejecute el Tiling.
+  # NOTA: Debemos borrar el trigger de la IngestFunction anterior si queremos evitar doble ejecución,
+  # o mejor aún: Que la IngestFunction (metadata) active a esta.
+  # Por ahora, hagamos que S3 active el Tiling directamente para probar la imagen Docker.
+  # ==========================================
+  # 6. PUENTE LIGHTNING AI (RE-TRAINING)
+  # ==========================================
+  LightningBridgeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          LIGHTNING_USER_ID: !Ref LightningUserId
+          LIGHTNING_API_KEY: !Ref LightningApiKey
+          LIGHTNING_PROJECT: "phenoberry-project" # El nombre del proyecto no es secreto, puede ir aquí
+          MY_AWS_KEY: !Ref MyAwsKey
+          MY_AWS_SECRET: !Ref MyAwsSecret
+      Events:
+        NewTrainingData:
+          Type: S3
+          Properties:
+            Bucket: !Ref S3RawZone
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: training-dataset/
+                  - Name: suffix
+                    Value: .zip # Dispara solo al subir un ZIP completo
+    Metadata:
+      Dockerfile: docker/bridge_image/Dockerfile
+      DockerContext: .
+      DockerTag: bridge-v1
+
+
+Outputs:
+  RawBucketName:
+    Description: "Bucket de subida de imagenes raw"
+    Value: !Ref S3RawZone
+  DynamoTableName:
+    Description: "Tabla de tracking"
+    Value: !Ref DynamoDBTrackingTable

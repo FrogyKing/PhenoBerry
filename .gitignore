@@ -1,3 +1,24 @@
+# Ignorar archivos de estructura
+*.pyc
+venv/
+.env
+.ipynb_checkpoints/
+*.jpg
+*.png
+*.mp4
+*.pt
+*.pth
+*.onnx
+data/
+
+# AWS & IDE
+.aws/
+.vscode/
+.idea/
+
+# Ignorar archivo de estructura
+structure.txt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

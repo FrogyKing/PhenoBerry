@@ -1,0 +1,44 @@
+# Git / CI
+.git
+.github
+.gitignore
+
+# AWS / Infra
+.aws-sam
+infrastructure
+samconfig.toml
+samconfig.yaml
+template.yaml
+
+# Python local
+venv
+__pycache__
+*.pyc
+*.pyo
+
+# Data (CRÍTICO)
+data
+datasets
+raw_originals
+processed_tiles
+
+# Notebooks & sandbox
+notebooks
+sandbox
+
+# Tests
+test
+
+# Lightning / ML artifacts
+lightning_workspace
+*.ckpt
+*.pt
+*.onnx
+*.pkl
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

@@ -342,8 +342,7 @@ def prepare_data_and_train():
         hsv_h=0.01,
         hsv_s=0.2,
         hsv_v=0.2,
-        multi_scale=True,
-        cls_pw=1.5
+        multi_scale=True
     )
 
     # ----------------------------------------

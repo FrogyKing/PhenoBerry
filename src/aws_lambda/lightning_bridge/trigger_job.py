@@ -36,7 +36,7 @@ def lambda_handler(event, context):
         # Usamos Machine.T4 (Barata y buena) o Machine.A10G (Más rápida)
         job = Job.run(
             command=cmd,
-            machine=Machine.A10G,
+            machine=Machine.A100,
             studio=studio,
             name=f"retrain-yolo-{context.aws_request_id[:8]}",
             env={

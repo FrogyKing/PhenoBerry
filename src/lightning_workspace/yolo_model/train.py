@@ -318,30 +318,32 @@ def prepare_data_and_train():
     # TRAIN
     # ----------------------------------------
     print("\n🚀 Entrenando YOLOv8...")
-    model = YOLO("yolov8n.pt")
+    model = YOLO("yolov11m.pt")
 
     run_name = "yolo_final_experiment"
 
     model.train(
         data="data.yaml",
-        epochs=100,
-        imgsz=640,
+        epochs=200,
+        imgsz=1024,
         batch=16,
         project=LOCAL_RUNS,
         name=run_name,
-        patience=15,
+        patience=30,
         mosaic=0.0,
-        mixup=0.2,
-        degrees=10,
-        translate=0.1,
+        mixup=0.05,
+        degrees=5,
+        translate=0.05,
         scale=0.1,
-        shear=5.0,
+        shear=1.0,
         perspective=0.0,
         flipud=0.1,
         fliplr=0.5,
         hsv_h=0.01,
         hsv_s=0.2,
         hsv_v=0.2,
+        multi_scale=True,
+        cls_pw=1.5
     )
 
     # ----------------------------------------

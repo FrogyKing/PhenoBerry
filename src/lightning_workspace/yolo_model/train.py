@@ -318,7 +318,7 @@ def prepare_data_and_train():
     # TRAIN
     # ----------------------------------------
     print("\n🚀 Entrenando YOLOv8...")
-    model = YOLO("yolov11m.pt")
+    model = YOLO("yolov8m.pt")
 
     run_name = "yolo_final_experiment"
 

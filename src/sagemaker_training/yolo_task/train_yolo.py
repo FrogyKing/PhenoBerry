@@ -223,7 +223,7 @@ def prepare_and_train():
 
     # 6. ENTRENAMIENTO YOLOv8
     print("\n🚀 Entrenando YOLOv8 en SageMaker...")
-    model = YOLO("yolov8m.pt") # SageMaker descargará los pesos si hay internet
+    model = YOLO("yolov8n.pt") # SageMaker descargará los pesos si hay internet
 
     # Nota: Bajamos imgsz a 640 para evitar CUDA Out of Memory en instancias G4dn de AWS
     model.train(

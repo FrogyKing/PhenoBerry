@@ -37,9 +37,9 @@ def lambda_handler(event, context):
                 'S3OutputPath': f"s3://{os.environ['ARTIFACTS_BUCKET']}/sagemaker-runs/"
             },
             ResourceConfig={
-                'InstanceType': 'ml.g4dn.xlarge', # Instancia con GPU (Económica)
+                'InstanceType': 'ml.g5.xlarge', # Instancia con GPU (Económica)
                 'InstanceCount': 1,
-                'VolumeSizeInGB': 30
+                'VolumeSizeInGB': 50
             },
             StoppingCondition={
                 'MaxRuntimeInSeconds': 86400 # 24 horas máximo

@@ -9,11 +9,11 @@ manifest_hash = ""
 packagetype = "Zip"
 functions = ["SageMakerTriggerFunction"]
 
-[function_build_definitions.deadfb72-fb73-49f0-aef2-ce11df749aff]
+[function_build_definitions.cc64076e-7f4a-40bb-a0ee-035931c9f833]
 packagetype = "Image"
 functions = ["TilingProcessingFunction"]
 
-[function_build_definitions.deadfb72-fb73-49f0-aef2-ce11df749aff.metadata]
+[function_build_definitions.cc64076e-7f4a-40bb-a0ee-035931c9f833.metadata]
 DockerTag = "python3.11-v1"
 DockerContext = "D:\\Github\\PhenoBerry"
 Dockerfile = "docker/processing_image/Dockerfile"

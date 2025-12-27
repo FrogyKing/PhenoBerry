@@ -11,6 +11,10 @@ from ultralytics import YOLO
 # CONFIGURACIÓN DE RUTAS SAGEMAKER (ESTÁNDAR AWS)
 # ---------------------------------------------------------
 # SageMaker descarga los datos de S3 aquí:
+
+if "/opt/ml/code" not in sys.path:
+    sys.path.insert(0, "/opt/ml/code")
+
 DATA_PATH = os.environ.get('SM_CHANNEL_TRAINING', '/opt/ml/input/data/training')
 # Todo lo que guardes aquí, SageMaker lo sube a S3 como model.tar.gz al terminar:
 MODEL_OUTPUT = os.environ.get('SM_MODEL_DIR', '/opt/ml/model')

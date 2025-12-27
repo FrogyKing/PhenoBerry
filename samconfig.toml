@@ -8,7 +8,7 @@ profile = "sam-dev"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 parameter_overrides = "EnvName=\"dev\""
-image_repositories = ["TilingProcessingFunction=038876987034.dkr.ecr.us-east-1.amazonaws.com/phenoberry-dev-ecr-core", "LightningBridgeFunction=038876987034.dkr.ecr.us-east-1.amazonaws.com/phenoberrystack8a39a4ae/lightningbridgefunctiond0809c8drepo"]
+image_repositories = ["TilingProcessingFunction=038876987034.dkr.ecr.us-east-1.amazonaws.com/phenoberry-dev-ecr-core"]
 
 [default.global.parameters]
 region = "us-east-1"

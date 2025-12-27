@@ -125,6 +125,7 @@ Resources:
           SAGEMAKER_ROLE_ARN: !GetAtt SageMakerExecutionRole.Arn
           RAW_BUCKET: !Sub "phenoberry-${EnvName}-raw-${AWS::AccountId}"
           ARTIFACTS_BUCKET: !Ref S3ModelArtifacts # Este no causa círculo porque no dispara la función
+          GITHUB_BRANCH: "infra/aws-training"
       Policies:
         - AmazonSageMakerFullAccess
         - S3ReadPolicy: # Agregamos permiso explícito de lectura al raw

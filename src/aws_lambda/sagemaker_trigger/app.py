@@ -46,7 +46,7 @@ def lambda_handler(event, context):
             # --- MLOps: Aquí conectamos con tu código en GitHub ---
             HyperParameters={
                 'sagemaker_program': 'src/sagemaker_training/yolo_task/train_yolo.py',
-                'sagemaker_submit_directory': f"https://github.com/FrogyKing/PhenoBerry/archive/refs/heads/main.tar.gz"
+                'sagemaker_submit_directory': f"https://github.com/FrogyKing/PhenoBerry/archive/refs/heads/{branch}.tar.gz"
             }
         )
 

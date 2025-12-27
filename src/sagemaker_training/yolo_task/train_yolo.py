@@ -1,0 +1,266 @@
+import os
+import sys
+import shutil
+import yaml
+import glob
+import random
+from datetime import datetime
+from ultralytics import YOLO
+
+# ---------------------------------------------------------
+# CONFIGURACIÓN DE RUTAS SAGEMAKER (ESTÁNDAR AWS)
+# ---------------------------------------------------------
+# SageMaker descarga los datos de S3 aquí:
+DATA_PATH = os.environ.get('SM_CHANNEL_TRAINING', '/opt/ml/input/data/training')
+# Todo lo que guardes aquí, SageMaker lo sube a S3 como model.tar.gz al terminar:
+MODEL_OUTPUT = os.environ.get('SM_MODEL_DIR', '/opt/ml/model')
+# Carpeta para gráficas, matriz de confusión, etc:
+OUTPUT_DATA = os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/output/data')
+
+# El código del repo se extrae en /opt/ml/code
+sys.path.append("/opt/ml/code")
+from src.common.tiling import process_tiling
+
+# Usamos /tmp para el procesamiento intermedio (es el disco local del contenedor)
+LOCAL_TILED = "/tmp/tiled"
+LOCAL_RUNS = "/tmp/runs"
+
+# Parámetros del Dataset
+TARGET_EMPTY_RATIO = 0.15
+MIN_FLOWER_RATIO = 0.8
+FLOWER_OVERSAMPLE_FACTOR = 10
+FLOWER_CLASS_ID = 0
+BLUEBERRY_CLASS_ID = 1
+
+# =========================================================
+# UTILIDADES DE REPORTE
+# =========================================================
+
+def get_class_counts(label_dir):
+    counts = {FLOWER_CLASS_ID: 0, BLUEBERRY_CLASS_ID: 0}
+    for txt in glob.glob(os.path.join(label_dir, "*.txt")):
+        try:
+            with open(txt) as f:
+                for line in f:
+                    cls = int(line.split()[0])
+                    if cls in counts:
+                        counts[cls] += 1
+        except:
+            pass
+    return counts
+
+def simple_report(name, counts):
+    total = sum(counts.values())
+    if total == 0:
+        print(f"{name}: sin objetos")
+        return
+    print(
+        f"{name}: Flor={counts[0]} ({counts[0]/total:.1%}) | "
+        f"Arándano={counts[1]} ({counts[1]/total:.1%}) | Total={total}"
+    )
+
+# =========================================================
+# BALANCE BACKGROUND AUTOMÁTICO
+# =========================================================
+
+def enforce_background_ratio_train(img_dir, lbl_dir, background_ratio=0.15, seed=42):
+    random.seed(seed)
+    label_files = glob.glob(os.path.join(lbl_dir, "*.txt"))
+    empty_tiles, non_empty_tiles = [], []
+
+    for lbl in label_files:
+        try:
+            with open(lbl, "r") as f:
+                content = f.read().strip()
+            if content == "":
+                empty_tiles.append(lbl)
+            else:
+                non_empty_tiles.append(lbl)
+        except:
+            continue
+
+    total_tiles = len(label_files)
+    if total_tiles == 0: return
+
+    target_empty = int(total_tiles * background_ratio)
+    print(f"\n🎯 Control background: Tot={total_tiles}, Vacíos={len(empty_tiles)}, Obj={target_empty}")
+
+    if len(empty_tiles) > target_empty:
+        random.shuffle(empty_tiles)
+        to_remove = empty_tiles[target_empty:]
+        for lbl in to_remove:
+            base = os.path.splitext(os.path.basename(lbl))[0]
+            for img in glob.glob(os.path.join(img_dir, base + ".*")):
+                os.remove(img)
+            os.remove(lbl)
+        print(f"🧹 Eliminados {len(to_remove)} tiles vacíos adicionales.")
+
+# =========================================================
+# OVERSAMPLING DE FLORES
+# =========================================================
+
+def apply_balancing(train_img_dir, train_lbl_dir):
+    print("\n🌸 Aplicando oversampling de flores...")
+    txt_files = glob.glob(os.path.join(train_lbl_dir, "*.txt"))
+    stats = {"aug_imgs": 0, "copies": 0}
+
+    for txt_path in txt_files:
+        try:
+            with open(txt_path) as f:
+                lines = f.readlines()
+        except: continue
+
+        total = flower_count = 0
+        for l in lines:
+            try:
+                cls = int(l.split()[0])
+                total += 1
+                if cls == FLOWER_CLASS_ID: flower_count += 1
+            except: pass
+
+        ratio = flower_count / total if total > 0 else 0.0
+
+        if ratio >= MIN_FLOWER_RATIO:
+            basename = os.path.basename(txt_path).replace(".txt", "")
+            img_candidates = glob.glob(os.path.join(train_img_dir, basename + ".*"))
+            if not img_candidates: continue
+
+            src_img = img_candidates[0]
+            ext = os.path.splitext(src_img)[1]
+            stats["aug_imgs"] += 1
+
+            for i in range(FLOWER_OVERSAMPLE_FACTOR):
+                new_name = f"{basename}_aug_{i}"
+                shutil.copy(src_img, os.path.join(train_img_dir, new_name + ext))
+                shutil.copy(txt_path, os.path.join(train_lbl_dir, new_name + ".txt"))
+                stats["copies"] += 1
+
+    print(f"✔ Tiles aumentados: {stats['aug_imgs']} | Copias: {stats['copies']}")
+
+# =========================================================
+# PIPELINE PRINCIPAL (MIGRADO A SAGEMAKER)
+# =========================================================
+
+def prepare_and_train():
+    # 1. Limpieza de carpetas temporales
+    if os.path.exists(LOCAL_TILED): shutil.rmtree(LOCAL_TILED)
+    if os.path.exists(LOCAL_RUNS): shutil.rmtree(LOCAL_RUNS)
+
+    for split in ["train", "val", "test"]:
+        os.makedirs(f"{LOCAL_TILED}/images/{split}", exist_ok=True)
+        os.makedirs(f"{LOCAL_TILED}/labels/{split}", exist_ok=True)
+
+    # 2. Clasificar imágenes desde DATA_PATH (S3 montado por SageMaker)
+    print(f"📂 Leyendo datos desde: {DATA_PATH}")
+    raw_images = []
+    for ext in ["*.jpg", "*.png", "*.JPG"]:
+        raw_images.extend(glob.glob(os.path.join(DATA_PATH, "images", ext)))
+
+    populated, empty = [], []
+    for img in raw_images:
+        name = os.path.basename(img).rsplit(".", 1)[0]
+        lbl = os.path.join(DATA_PATH, "labels", name + ".txt")
+        if os.path.exists(lbl) and open(lbl).read().strip():
+            populated.append(img)
+        else:
+            empty.append(img)
+
+    random.shuffle(populated)
+    random.shuffle(empty)
+    final_dataset = populated + empty
+
+    n_total = len(final_dataset)
+    n_train = int(n_total * 0.8)
+    n_val = int(n_total * 0.1)
+
+    split_map = {
+        "train": final_dataset[:n_train],
+        "val": final_dataset[n_train:n_train + n_val],
+        "test": final_dataset[n_train + n_val:]
+    }
+
+    # 3. TILING
+    print("\n🧩 Ejecutando tiling...")
+    for split, imgs in split_map.items():
+        for img_path in imgs:
+            name = os.path.basename(img_path).rsplit(".", 1)[0]
+            lbl_path = os.path.join(DATA_PATH, "labels", name + ".txt")
+            lbl_path = lbl_path if os.path.exists(lbl_path) else None
+
+            process_tiling(
+                img_path=img_path,
+                output_dir_img=f"{LOCAL_TILED}/images/{split}",
+                output_dir_lbl=f"{LOCAL_TILED}/labels/{split}",
+                lbl_path=lbl_path,
+                filename_prefix=name,
+            )
+
+    # 4. BALANCEO Y REPORTES
+    enforce_background_ratio_train(f"{LOCAL_TILED}/images/train", f"{LOCAL_TILED}/labels/train", TARGET_EMPTY_RATIO)
+    
+    print("\n--- ESTADÍSTICAS PRE OVERSAMPLING ---")
+    simple_report("Train", get_class_counts(f"{LOCAL_TILED}/labels/train"))
+    
+    apply_balancing(f"{LOCAL_TILED}/images/train", f"{LOCAL_TILED}/labels/train")
+
+    print("\n--- ESTADÍSTICAS POST OVERSAMPLING ---")
+    simple_report("Train", get_class_counts(f"{LOCAL_TILED}/labels/train"))
+
+    # 5. CONFIGURAR YAML PARA YOLO
+    data_yaml = {
+        "path": LOCAL_TILED,
+        "train": "images/train",
+        "val": "images/val",
+        "test": "images/test",
+        "names": {0: "flor", 1: "arandano"},
+    }
+    with open('data.yaml', 'w') as f:
+        yaml.dump(data_yaml, f)
+
+    # 6. ENTRENAMIENTO YOLOv8
+    print("\n🚀 Entrenando YOLOv8 en SageMaker...")
+    model = YOLO("yolov8m.pt") # SageMaker descargará los pesos si hay internet
+
+    # Nota: Bajamos imgsz a 640 para evitar CUDA Out of Memory en instancias G4dn de AWS
+    model.train(
+        data="data.yaml",
+        epochs=100,
+        imgsz=640,
+        batch=16,
+        project=LOCAL_RUNS,
+        name='yolo_aws',
+        patience=20,
+        mosaic=0.0,
+        mixup=0.05,
+        degrees=5,
+        translate=0.05,
+        scale=0.1,
+        shear=1.0,
+        perspective=0.0,
+        flipud=0.1,
+        fliplr=0.5,
+        hsv_h=0.01,
+        hsv_s=0.2,
+        hsv_v=0.2,
+        multi_scale=True
+    )
+
+
+    # 7. EXPORTAR RESULTADOS A S3 (Vía SageMaker)
+    run_dir = os.path.join(LOCAL_RUNS, "yolo_aws")
+    
+    # El modelo 'best.pt' se guarda en MODEL_OUTPUT para ser registrado
+    best_model = os.path.join(run_dir, "weights", "best.pt")
+    if os.path.exists(best_model):
+        shutil.copy(best_model, os.path.join(MODEL_OUTPUT, "model.pt"))
+        print(f"✅ Modelo copiado a {MODEL_OUTPUT}")
+
+    # Las gráficas y logs se guardan en OUTPUT_DATA
+    if os.path.exists(run_dir):
+        # Copiamos todo excepto la carpeta weights para no duplicar el modelo pesado
+        shutil.copytree(run_dir, os.path.join(OUTPUT_DATA, "yolo_results"), 
+                        ignore=shutil.ignore_patterns('weights'), dirs_exist_ok=True)
+        print(f"📈 Gráficas copiadas a {OUTPUT_DATA}")
+
+if __name__ == "__main__":
+    prepare_and_train()

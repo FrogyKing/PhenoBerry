@@ -9,20 +9,20 @@ manifest_hash = ""
 packagetype = "Zip"
 functions = ["IngestTriggerFunction"]
 
-[function_build_definitions.0da05a47-293d-4f3b-920e-52f626134967]
+[function_build_definitions.50b513ad-b71b-4d13-a44d-3b0ce45e60f2]
 packagetype = "Image"
 functions = ["TilingProcessingFunction"]
 
-[function_build_definitions.0da05a47-293d-4f3b-920e-52f626134967.metadata]
+[function_build_definitions.50b513ad-b71b-4d13-a44d-3b0ce45e60f2.metadata]
 DockerTag = "python3.11-v1"
 DockerContext = "D:\\Github\\PhenoBerry"
 Dockerfile = "docker/processing_image/Dockerfile"
 
-[function_build_definitions.8d3eab0d-90ad-4f42-a2b2-0b6fdae1e79d]
+[function_build_definitions.5c0e594e-86ca-4b1b-b228-5f9629afbbee]
 packagetype = "Image"
 functions = ["LightningBridgeFunction"]
 
-[function_build_definitions.8d3eab0d-90ad-4f42-a2b2-0b6fdae1e79d.metadata]
+[function_build_definitions.5c0e594e-86ca-4b1b-b228-5f9629afbbee.metadata]
 Dockerfile = "docker/bridge_image/Dockerfile"
 DockerContext = "D:\\Github\\PhenoBerry"
 DockerTag = "bridge-v1"

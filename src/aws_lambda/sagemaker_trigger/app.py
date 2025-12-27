@@ -8,6 +8,7 @@ sm_client = boto3.client('sagemaker')
 def lambda_handler(event, context):
     # 1. Generar un nombre único para el entrenamiento
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    branch = os.environ.get('GITHUB_BRANCH', 'main')
     job_name = f"phenoberry-yolo-{timestamp}"
     
     print(f"🚀 Iniciando SageMaker Training Job: {job_name}")

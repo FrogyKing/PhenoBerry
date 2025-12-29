@@ -71,7 +71,11 @@ Resources:
             Events: s3:ObjectCreated:*
             Filter:
               S3Key:
-                Rules: [{Name: suffix, Value: .jpg}]
+                Rules:
+                  - Name: prefix
+                    Value: uploads/
+                  - Name: suffix
+                    Value: .jpg
         UploadPNG:
           Type: S3
           Properties:
@@ -79,8 +83,11 @@ Resources:
             Events: s3:ObjectCreated:*
             Filter:
               S3Key:
-                Rules: [{Name: suffix, Value: .png}]
-        # (Puedes añadir los UpperCase aquí igual que antes)
+                Rules:
+                  - Name: prefix
+                    Value: uploads/
+                  - Name: suffix
+                    Value: .png
       Policies:
         - S3ReadPolicy:
             BucketName: !Sub "phenoberry-${EnvName}-raw-${AWS::AccountId}"
@@ -125,7 +132,6 @@ Resources:
           SAGEMAKER_ROLE_ARN: !GetAtt SageMakerExecutionRole.Arn
           RAW_BUCKET: !Sub "phenoberry-${EnvName}-raw-${AWS::AccountId}"
           ARTIFACTS_BUCKET: !Ref S3ModelArtifacts # Este no causa círculo porque no dispara la función
-          GITHUB_BRANCH: "infra/aws-training"
       Policies:
         - AmazonSageMakerFullAccess
         - S3ReadPolicy: # Agregamos permiso explícito de lectura al raw
@@ -146,10 +152,43 @@ Resources:
             Filter:
               S3Key:
                 Rules:
-                  - Name: prefix
-                    Value: training-dataset/
                   - Name: suffix
                     Value: .zip
+
+  InferenceLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image  # <-- Cambiar de Zip a Image
+      FunctionName: inference-lambda
+      Timeout: 900
+      MemorySize: 3008
+      Environment:
+        Variables:
+          PROCESSED_BUCKET: !Sub "phenoberry-${EnvName}-processed-${AWS::AccountId}"
+          OUTPUT_BUCKET: !Ref S3FinalOutput
+          MODEL_BUCKET: "phenoberry-dev-artifacts-038876987034"
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Sub "phenoberry-${EnvName}-processed-${AWS::AccountId}"
+        - S3WritePolicy:
+            BucketName: !Ref S3FinalOutput
+        - S3ReadPolicy:
+            BucketName: "phenoberry-dev-artifacts-038876987034"
+      Events:
+        TilesUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref S3ProcessedZone
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: tiles/
+    Metadata:
+      Dockerfile: docker/inference_yolo/Dockerfile
+      DockerContext: ..
+      DockerTag: python3.11-v1
 
 Outputs:
   RawBucketName:

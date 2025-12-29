@@ -4,9 +4,10 @@ import shutil
 import yaml
 import glob
 import random
+import json
 from datetime import datetime
 from ultralytics import YOLO
-
+import boto3
 # ---------------------------------------------------------
 # CONFIGURACIÓN DE RUTAS SAGEMAKER (ESTÁNDAR AWS)
 # ---------------------------------------------------------
@@ -20,6 +21,12 @@ DATA_PATH = os.environ.get('SM_CHANNEL_TRAINING', '/opt/ml/input/data/training')
 MODEL_OUTPUT = os.environ.get('SM_MODEL_DIR', '/opt/ml/model')
 # Carpeta para gráficas, matriz de confusión, etc:
 OUTPUT_DATA = os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/output/data')
+# Bucket de artifacts
+S3_BUCKET = os.environ.get('SM_HP_ARTIFACTS_BUCKET')
+
+# Verificación de seguridad
+if not S3_BUCKET:
+    print("❌ ERROR: No se recibió la variable S3_BUCKET desde los hiperparámetros.")
 
 # El código del repo se extrae en /opt/ml/code
 sys.path.append("/opt/ml/code")
@@ -35,6 +42,8 @@ MIN_FLOWER_RATIO = 0.8
 FLOWER_OVERSAMPLE_FACTOR = 10
 FLOWER_CLASS_ID = 0
 BLUEBERRY_CLASS_ID = 1
+
+s3_client = boto3.client('s3')
 
 # =========================================================
 # UTILIDADES DE REPORTE
@@ -141,11 +150,22 @@ def apply_balancing(train_img_dir, train_lbl_dir):
 
     print(f"✔ Tiles aumentados: {stats['aug_imgs']} | Copias: {stats['copies']}")
 
+def upload_dir_to_s3(local_dir, bucket, s3_prefix):
+    for root, dirs, files in os.walk(local_dir):
+        for file in files:
+            local_path = os.path.join(root, file)
+            relative_path = os.path.relpath(local_path, local_dir)
+            s3_path = os.path.join(s3_prefix, relative_path).replace("\\","/")
+            s3_client.upload_file(local_path, bucket, s3_path)
+    print(f"✅ Subido {local_dir} a s3://{bucket}/{s3_prefix}")
 # =========================================================
 # PIPELINE PRINCIPAL (MIGRADO A SAGEMAKER)
 # =========================================================
 
 def prepare_and_train():
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dataset_version = "dataset_v001"  # Ajusta según tu dataset
+    s3_prefix_base = f"sagemaker-runs/yolo/{dataset_version}_{timestamp}"
     # 1. Limpieza de carpetas temporales
     if os.path.exists(LOCAL_TILED): shutil.rmtree(LOCAL_TILED)
     if os.path.exists(LOCAL_RUNS): shutil.rmtree(LOCAL_RUNS)
@@ -228,7 +248,7 @@ def prepare_and_train():
     # Nota: Bajamos imgsz a 640 para evitar CUDA Out of Memory en instancias G4dn de AWS
     model.train(
         data="data.yaml",
-        epochs=100,
+        epochs=5, # Cambiando a 5 epocas para probar
         imgsz=640,
         batch=16,
         project=LOCAL_RUNS,
@@ -257,14 +277,26 @@ def prepare_and_train():
     best_model = os.path.join(run_dir, "weights", "best.pt")
     if os.path.exists(best_model):
         shutil.copy(best_model, os.path.join(MODEL_OUTPUT, "model.pt"))
+        shutil.copy(best_model, os.path.join(run_dir, "best.pt"))
         print(f"✅ Modelo copiado a {MODEL_OUTPUT}")
+    
+    # Subiendo a S3 artifacts
+    upload_dir_to_s3(run_dir, S3_BUCKET, f"{s3_prefix_base}/runs")
+    upload_dir_to_s3(MODEL_OUTPUT, S3_BUCKET, f"{s3_prefix_base}/model")
 
-    # Las gráficas y logs se guardan en OUTPUT_DATA
-    if os.path.exists(run_dir):
-        # Copiamos todo excepto la carpeta weights para no duplicar el modelo pesado
-        shutil.copytree(run_dir, os.path.join(OUTPUT_DATA, "yolo_results"), 
-                        ignore=shutil.ignore_patterns('weights'), dirs_exist_ok=True)
-        print(f"📈 Gráficas copiadas a {OUTPUT_DATA}")
+    # Manifest.json
+    manifest = {
+        "dataset_version": dataset_version,
+        "timestamp": timestamp,
+        "model_s3_path": f"s3://{S3_BUCKET}/{s3_prefix_base}/model/model.pt",
+        "runs_s3_path": f"s3://{S3_BUCKET}/{s3_prefix_base}/runs"
+    }
+
+    manifest_path = os.path.join(LOCAL_RUNS, "manifest.json")
+    with open(manifest_path, 'w') as f:
+        json.dump(manifest, f, indent=2)
+    s3_client.upload_file(manifest_path, S3_BUCKET, f"{s3_prefix_base}/manifest.json")
+    print(f"✅ Entrenamiento completo. Manifest subido a S3")
 
 if __name__ == "__main__":
     prepare_and_train()

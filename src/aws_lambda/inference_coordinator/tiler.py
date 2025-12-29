@@ -52,7 +52,8 @@ def lambda_handler(event, context):
         # --- 3. TILING (Lógica Compartida) ---
         # CORRECCIÓN: Usamos rsplit('.', 1) para quitar SOLO la extensión final (.jpg)
         # Esto respeta los puntos intermedios en el nombre del archivo (ej: 18.0)
-        filename = source_key.split('/')[-1]
+        relative_path = source_key.replace("uploads/", "")
+        filename = os.path.basename(relative_path)
         filename_prefix = filename.rsplit('.', 1)[0]
         
         generated_files = process_tiling(
@@ -67,8 +68,8 @@ def lambda_handler(event, context):
         uploaded_tiles = []
         for file_path in generated_files:
             file_name = os.path.basename(file_path)
-            # Guardamos en carpeta con el nombre de la foto original
-            s3_dest_key = f"{filename_prefix}/{file_name}"
+            # Guardamos en carpeta con el nombre de la foto original dentro de tiles
+            s3_dest_key = f"tiles/{filename_prefix}/{file_name}"
             
             s3_client.upload_file(file_path, PROCESSED_BUCKET, s3_dest_key)
             uploaded_tiles.append(s3_dest_key)

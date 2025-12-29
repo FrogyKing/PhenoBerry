@@ -18,7 +18,6 @@ def lambda_handler(event, context):
         response = sm_client.create_training_job(
             TrainingJobName=job_name,
             AlgorithmSpecification={
-                # Imagen oficial de AWS para PyTorch (incluye soporte GPU)
                 'TrainingImage': '763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.0.0-gpu-py310',
                 'TrainingInputMode': 'File'
             },
@@ -28,28 +27,29 @@ def lambda_handler(event, context):
                 'DataSource': {
                     'S3DataSource': {
                         'S3DataType': 'S3Prefix',
-                        'S3Uri': f"s3://{os.environ['RAW_BUCKET']}/training-dataset/",
+                        'S3Uri': f"s3://{os.environ['ARTIFACTS_BUCKET']}/datasets/yolo/dataset_v001/",
                         'S3DataDistributionType': 'FullyReplicated'
                     }
                 }
             }],
             OutputDataConfig={
-                'S3OutputPath': f"s3://{os.environ['ARTIFACTS_BUCKET']}/sagemaker-runs/"
+                'S3OutputPath': f"s3://{os.environ['ARTIFACTS_BUCKET']}/sagemaker-runs/yolo/{job_name}/"
             },
             ResourceConfig={
-                'InstanceType': 'ml.g5.xlarge', # Instancia con GPU (Económica)
+                'InstanceType': 'ml.g5.xlarge',
                 'InstanceCount': 1,
                 'VolumeSizeInGB': 50
             },
             StoppingCondition={
-                'MaxRuntimeInSeconds': 86400 # 24 horas máximo
+                'MaxRuntimeInSeconds': 86400
             },
-            # --- MLOps: Aquí conectamos con tu código en GitHub ---
             HyperParameters={
                 'sagemaker_program': 'src/sagemaker_training/yolo_task/train_yolo.py',
-                'sagemaker_submit_directory': f"s3://{os.environ['ARTIFACTS_BUCKET']}/code/sourcedir.tar.gz"
+                'sagemaker_submit_directory': f"s3://{os.environ['ARTIFACTS_BUCKET']}/code/sourcedir.tar.gz",
+                'artifacts_bucket': os.environ['ARTIFACTS_BUCKET']
             }
         )
+
 
         print(f"✅ Job creado exitosamente. ARN: {response['TrainingJobArn']}")
         

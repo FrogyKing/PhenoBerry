@@ -9,13 +9,22 @@ manifest_hash = ""
 packagetype = "Zip"
 functions = ["SageMakerTriggerFunction"]
 
-[function_build_definitions.dcc646ed-f8e9-4092-a9f3-ebc00a72e248]
+[function_build_definitions.78ccdbdb-6857-440e-b5c4-a44b48d6458e]
 packagetype = "Image"
 functions = ["TilingProcessingFunction"]
 
-[function_build_definitions.dcc646ed-f8e9-4092-a9f3-ebc00a72e248.metadata]
+[function_build_definitions.78ccdbdb-6857-440e-b5c4-a44b48d6458e.metadata]
 DockerTag = "python3.11-v1"
 DockerContext = "D:\\Github\\PhenoBerry"
 Dockerfile = "docker/processing_image/Dockerfile"
+
+[function_build_definitions.a6f66307-f093-4e59-8503-7a299c5caa3c]
+packagetype = "Image"
+functions = ["InferenceLambdaFunction"]
+
+[function_build_definitions.a6f66307-f093-4e59-8503-7a299c5caa3c.metadata]
+Dockerfile = "docker/inference_yolo/Dockerfile"
+DockerContext = "D:\\Github\\PhenoBerry"
+DockerTag = "python3.11-v1"
 
 [layer_build_definitions]
